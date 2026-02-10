@@ -10,6 +10,11 @@ import os
 
 from colorama import Fore, Style
 
+import boto3
+from botocore import UNSIGNED
+from botocore.client import Config
+from os.path import isfile, join
+
 # Local imports.
 from os.path import isdir, isfile, join
 import argparse
@@ -25,31 +30,48 @@ def print_highlight(msg):
 
 class AirLabDownloader(object):
     def __init__(self, bucket_name = 'tartandrive') -> None:
-        from minio import Minio
-        endpoint_url = "airlab-share-02.andrew.cmu.edu:9000"
 
-        # public key (for downloading): 
-        access_key = "nFNreHkFY2ca56vIHVaU"
-        secret_key = "IHnkXfe30TjJxkVpF8LuP8wQ7kWoMRrb5QpwcK7Z"
-
-        self.client = Minio(endpoint_url, access_key=access_key, secret_key=secret_key, secure=True)
+        endpoint_url = "https://airlab-cloud.andrew.cmu.edu:8080/swift/v1/AUTH_ac8533a83cff4d48bc8c608ad222d330"
+        
+        self.client = boto3.client("s3", endpoint_url=endpoint_url, config=Config(signature_version=UNSIGNED))
         self.bucket_name = bucket_name
 
-    def download(self, filelist, destination_path):
-        target_filelist = []
+    def download(self, filelist, output_dir):
+        success_source_files, success_target_files = [], []
         for source_file_name in filelist:
-            target_file_name = join(destination_path, source_file_name.replace('/', '_'))
-            target_filelist.append(target_file_name)
-            print('--')
-            if isfile(target_file_name):
-                print_error('Error: Target file {} already exists..'.format(target_file_name))
-                return False, None
+            target_file_name = join(output_dir, source_file_name)
+            # Create target directory if it does not exist
+            import os
+            target_dir = os.path.dirname(target_file_name)
+            if not os.path.exists(target_dir):
+                # make recursive directory
+                os.makedirs(target_dir)
+            # if isfile(target_file_name):
+            #     print_error('Error: Target file {} already exists..'.format(target_file_name))
+            #     continue
+            #     # return False, success_source_files, success_target_files
 
             print(f"  Downloading {source_file_name} from {self.bucket_name}...")
-            self.client.fget_object(self.bucket_name, source_file_name, target_file_name)
-            print(f"  Successfully downloaded {source_file_name} to {target_file_name}!")
+            try:
+                resp = self.client.get_object(Bucket=self.bucket_name, Key=source_file_name)
 
-        return True, target_filelist
+                with open(target_file_name, "wb") as f:
+                    for chunk in resp["Body"].iter_chunks(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                            
+            except Exception as e:
+                print(f"Error: Failed to download {source_file_name} due to {e}.")
+                continue
+
+            print(f"  Successfully downloaded {source_file_name} to {target_file_name}!")
+            success_source_files.append(source_file_name)
+            success_target_files.append(target_file_name)
+        
+        if len(success_target_files) == len(filelist):
+            return True, success_source_files, success_target_files
+        else:
+            return False, success_source_files, success_target_files
 
 
 class TartandriveDownloader():
