@@ -17,7 +17,7 @@ class ProbWorldModelsTrainer(WorldModelsTrainer):
     """
     World models trainer for prob world models (i.e. NLLLoss on states instead of MSE)
     """
-    def evaluate(self, train_dataset=False):
+    def evaluate(self, trag hin_dataset=False):
         avg_rmse = torch.zeros_like(self.eval_dataset[0]['observation']['state'][0], device='cuda')
 
         if train_dataset:
